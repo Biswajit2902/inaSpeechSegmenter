@@ -310,7 +310,7 @@ class Segmenter:
         """
         if medianame:
             mspec, loge, difflen = _media2feats(medianame, tmpdir, start_sec, stop_sec, self.ffmpeg)
-        elif audio:
+        elif not isinstance(y, type(None)):
             mspec, loge, difflen = _audio2feats(audio, sampling_rate)
         else:
             raise ValueError("Atleast Audio file or Audio Array is expected!")
