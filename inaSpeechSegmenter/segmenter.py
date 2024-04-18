@@ -50,8 +50,31 @@ import warnings
 
 from .export_funcs import seg2csv, seg2textgrid
 
+import resampy
+
 def _media2feats(medianame, tmpdir, start_sec, stop_sec, ffmpeg):
     sig = media2sig16kmono(medianame, tmpdir, start_sec, stop_sec, ffmpeg, 'float32')
+        
+    with warnings.catch_warnings():
+        # ignore warnings resulting from empty signals parts
+        warnings.filterwarnings('ignore', message='divide by zero encountered in log', category=RuntimeWarning)
+        _, loge, _, mspec = mfcc(sig.astype(np.float32), get_mspec=True)
+
+    # Management of short duration segments
+    difflen = 0
+    if len(loge) < 68:
+        difflen = 68 - len(loge)
+        warnings.warn("media %s duration is short. Robust results require length of at least 720 milliseconds" % medianame)
+        mspec = np.concatenate((mspec, np.ones((difflen, 24)) * np.min(mspec)))
+
+    return mspec, loge, difflen
+
+def _audio2feats(audio, sampling_rate):
+    if sampling_rate != 16000:
+        sig = resampy.resample(audio, sampling_rate, 16000)
+    else:
+        sig = audio
+        
     with warnings.catch_warnings():
         # ignore warnings resulting from empty signals parts
         warnings.filterwarnings('ignore', message='divide by zero encountered in log', category=RuntimeWarning)
@@ -273,7 +296,7 @@ class Segmenter:
         return [(lab, start_sec + start * .02, start_sec + stop * .02) for lab, start, stop in lseg]
 
 
-    def __call__(self, medianame, tmpdir=None, start_sec=None, stop_sec=None):
+    def __call__(self, medianame=None, tmpdir=None, start_sec=None, stop_sec=None, audio=None, sampling_rate=16000):
         """
         Return segmentation of a given file
                 * convert file to wav 16k mono with ffmpeg
@@ -285,8 +308,13 @@ class Segmenter:
         * start_sec (seconds): sound stream before start_sec won't be processed
         * stop_sec (seconds): sound stream after stop_sec won't be processed
         """
-        
-        mspec, loge, difflen = _media2feats(medianame, tmpdir, start_sec, stop_sec, self.ffmpeg)
+        if medianame:
+            mspec, loge, difflen = _media2feats(medianame, tmpdir, start_sec, stop_sec, self.ffmpeg)
+        elif audio:
+            mspec, loge, difflen = _audio2feats(audio, sampling_rate)
+        else:
+            raise ValueError("Atleast Audio file or Audio Array is expected!")
+            
         if start_sec is None:
             start_sec = 0
         # do segmentation   
